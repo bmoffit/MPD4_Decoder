@@ -13,9 +13,9 @@ glibs   := $(shell root-config --glibs)
 cflags  := $(shell root-config --cflags)
 
 
-incfile := -I/home/danning/coda/Linux-x86_64/include
+incfile := -I${CODA}/Linux-x86_64/include
 
-flags   := $(libs) $(glibs) $(cflags) $(incfile) -L/home/danning/coda/Linux-x86_64/lib -levio -levioxx -lexpat
+flags   := $(libs) $(glibs) $(cflags) $(incfile) -L${CODA}/Linux-x86_64/lib -levio -levioxx -lexpat
 
 $(Target) : $(Source)
 	@$(cc) -std=c++11 -O3 -o $(Target) $(Source) $(flags)

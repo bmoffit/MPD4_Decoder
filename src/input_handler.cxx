@@ -40,11 +40,18 @@ int InputHandler::Initialize()
   if(runtype=="CalPedestal")
     {
       InitPedestalToWrite();
+      return 1;
     }
   if(runtype=="GetRootFile") 
     {
-      LoadPedestalToRead();
+      //  LoadPedestalToRead();
       InitRootFile();
+      return 1;
+    }
+  if(runtype=="singleEventHitMonitor") 
+    {
+      cHit = new TCanvas("Hit_Monitor","cc",0,0,1200,900);
+      cHit->Divide(2,1);
     }
   return 1;
 }
@@ -179,11 +186,6 @@ int InputHandler::InitRootFile()
   adc3     = new Int_t[20000];
   adc4     = new Int_t[20000];
   adc5     = new Int_t[20000];
-  fCH      = new Int_t[100];
-  ftiming  = new Int_t[100];
-  fadc     = new Int_t[100];
-  tCH      = new Int_t[100];
-  ttiming  = new Double_t [100];
 
   Hit      = new TTree("GEMHit","Hit list");
 
@@ -199,15 +201,7 @@ int InputHandler::InitRootFile()
   Hit->Branch("adc3",adc3,"adc3[nch]/I");
   Hit->Branch("adc4",adc4,"adc4[nch]/I");
   Hit->Branch("adc5",adc5,"adc5[nch]/I");
-  //--------------fadc---------------------
-  Hit->Branch("nfadc",&nfadc,"nfadc/I");//nb of fadc channel fired
-  Hit->Branch("fCH",fCH,"fCH[nfadc]/I");//slot+ch
-  Hit->Branch("ftimting",ftiming,"ftiming[nfadc]/I");//timing
-  Hit->Branch("fadc",fadc,"fadc[nfadc]/I");//adc total/adc max
-  //--------------tdc----------------------
-  Hit->Branch("ntdc",&ntdc,"ntdc/I");//nb of tdc channel fired
-  Hit->Branch("tCH",tCH,"tCH[ntdc]/I");//channel nb
-  Hit->Branch("ttiming",ttiming,"ttiming[ntdc]/D");//tdc value
+
 }
 
 
@@ -217,7 +211,7 @@ int InputHandler::InitRootFile()
 //______________________________________________
 int InputHandler::ProcessAllFiles()
 { 
-  const int mpd_tag=10,fadc_tag=20,tdc_tag=30;
+  const int mpd_tag=10,fadc_tag=3,tdc_tag=6;
   int entry = 0;
   for(int NFile=0;NFile<NbofInputFile;NFile++)
     {
@@ -229,9 +223,17 @@ int InputHandler::ProcessAllFiles()
 	cout<<">"<<endl;
 	while(chan.read()&&entry<nEvt)
 	  {
+	  
+	    map<int, Double_t > mTDC;
+	    map<int, vector<int> > mFADc;//slot+channel
 	    evioDOMTree event(chan);
 	    evioDOMNodeListP mpdEventList = event.getNodeList( isLeaf() );
-	     cout<<"number of banks: "<<mpdEventList->size()<<endl;
+	    if(EvtID%100==0)
+	      {
+		cout<<"event: "<<EvtID<<endl;
+		cout<<"number of banks: "<<mpdEventList->size()<<endl;
+	      }
+	    
 	    evioDOMNodeList::iterator iter;
 	    for(iter=mpdEventList->begin(); iter!=mpdEventList->end(); ++iter)
 	      {
@@ -241,15 +243,12 @@ int InputHandler::ProcessAllFiles()
 		case mpd_tag:
 		  entry+=ProcessSspBlock(*block_vec);
 		  break;
-		case fadc_tag:
-
-		  break;
-		case tdc_tag:
-
-		  break;
 		}
 	      }
-
+	    if(runtype=="GetRootFile") 
+	      {	
+		Hit->Fill();
+	      }
 	  }
 	chan.close();
 
@@ -268,7 +267,8 @@ int InputHandler::ProcessSspBlock(const vector<uint32_t> &block_vec)
 {
   
   int vec_size = block_vec.size();
-  cout<<"procBlock: blockvec size: "<<vec_size<<endl;
+  if(EvtID%100==0) cout<<"procBlock: blockvec size: "<<vec_size<<endl;
+  
   int NofEvtInBlk=0;
   for(int istart=0; istart<vec_size; istart++)
     {
@@ -286,31 +286,33 @@ int InputHandler::ProcessSspBlock(const vector<uint32_t> &block_vec)
 //______________________________________________
 int InputHandler::ProcessSingleSspEvent(const vector<uint32_t> &block_vec, int istart)
 {
+  cout<<"Processing single event..."<<endl;
   int iend;
   int vec_size = block_vec.size();
   for(iend=istart+1;iend<vec_size;iend++)
     {
       uint32_t tag = (block_vec[iend]>>24)&0xf8;
       if(tag==0x90||tag==0x88) break;
-    }  
+    } 
   RawDecoder raw_decoder(block_vec,istart,iend);
-  
-
-  
-  if(runtype=="RawDataMonitor")  raw_decoder.DrawRawHisto();
+    
   if(runtype=="CalPedestal")     
     {
-      map<int, vector<int> > mTsAdc = raw_decoder.GetStripTsAdcMap();
+      map<int, vector<int> > mTsAdc = raw_decoder.Decode();
       CalSinglePedestal(mTsAdc);
     }
   if(runtype=="GetRootFile")   
     {
-      map<int, vector<int> > mmHit = raw_decoder.ZeroSup(mMapping,mvPedestalMean,mvPedestalRMS);
+      map<int, vector<int> > mmHit = raw_decoder.GetHits(mMapping);
       FillRootTree(mmHit);
     }
-
+  if(runtype=="singleEventHitMonitor")
+    {
+      cout<<"Draw raw data"<<endl;
+      raw_decoder.DrawHits(mMapping, cHit);
+      // cHit->Update();
+    }
   //entry++;
-
   return (iend-1);
 }
 
@@ -345,8 +347,8 @@ int InputHandler::FillRootTree(const map<int, vector<int> > &mmHit)
       //cout<<"planeid: "<<planeid<<"  "<<stripVector.size()<<"DDDDD"<<endl;
       //cout<<"HHH"<<ittt->first<<endl;
       stripVector.push_back(it->first);
-      cout<<EvtID<<endl;
-      getchar();
+      // cout<<EvtID<<endl;
+      //getchar();
     }
 
   for(int i=0;i<stripVector.size();i++)
@@ -362,22 +364,10 @@ int InputHandler::FillRootTree(const map<int, vector<int> > &mmHit)
       //cout<<"ADC:"<<stripVector[i]<<" "<<adc0[nstrip]<<" "<<adc1[nstrip]<<" "<<adc2[nstrip]<<" "<<adc3[nstrip]<<" "<<adc4[nstrip]<<" "<<adc5[nstrip]<<endl;
       VdetID[nstrip]=GetDet_ID(stripVector[i]); //cout<<VdetID[nstrip]<<endl;
       VplaneID[nstrip]=GetPlane_ID(stripVector[i]); //cout<<"planeid"<<VplaneID[nstrip]<<endl;
-	 
-      //	  for(int j=0;j<6;j++)
-      // {
-      //  txt<<setw(12)<<setfill(' ')<<entry<<setw(12)<<setfill(' ')<<(VdetID[nstrip]*2+VplaneID[nstrip])<<setw(12)<<setfill(' ')<<Vstrip[nstrip]<<setw(12)<<setfill(' ')<<mmHit[stripVector[i]][j]<<endl;
-      //}
-
-
-      //	if(CountFlag[(2*VdetID[nstrip]+VplaneID[nstrip])]!=0){hitcount[(2*VdetID[nstrip]+VplaneID[nstrip])]+=1;}
-      //	CountFlag[(2*VdetID[nstrip]+VplaneID[nstrip])]=0;
-	  
       nstrip++;
     }
   nch=nstrip;
-  if(nch==0) return 1;
-  //EvtID=entry;
-  Hit->Fill();
+
   return 1;
 }
 
@@ -389,8 +379,8 @@ int InputHandler::FillRootTree(const map<int, vector<int> > &mmHit)
 //______________________________________________
 int InputHandler::Summary()
 {
-  if(runtype=="CalPedestal") SummPedestal();
-  if(runtype=="GetRootFile") SummRootFile();
+  if(runtype=="CalPedestal")  SummPedestal();
+  if(runtype=="GetRootFile")  SummRootFile();
   return 1;
 }
 
@@ -402,6 +392,7 @@ int InputHandler::SummPedestal()
   char *PedFilename_temp = new char[100];
   std::strcpy(PedFilename_temp,PedFiletoSAVE.c_str());
   f = new TFile(PedFilename_temp,"RECREATE");
+  ofstream of("pedestal.txt", ofstream::out);
   delete[] PedFilename_temp;
   map<int,TH1F* > ::iterator it;
   for(it = mPedestalHisto.begin(); it!=mPedestalHisto.end(); ++it)
@@ -413,7 +404,8 @@ int InputHandler::SummPedestal()
       TH1F* Pedestal_temp = it->second;
       float mean = Pedestal_temp->GetMean();//if(adc_ch==0){cout<<"Mean:  "<<mean<<endl;}
       float rms  = Pedestal_temp->GetRMS();
-      //cout<<"StripNb: "<<stripNb<<" RMS: "<<rms<<"MEAN: "<<mean<<endl;
+      cout<<"StripNb: "<<stripNb<<" RMS: "<<rms<<"MEAN: "<<mean<<endl;
+      of<<mpd_id<<" "<<adc_ch<<" "<<setw(5)<<stripNb<<"  "<<setw(5)<<mean<<" "<<rms<<endl;
       mPedestalMean[hybridID&0xfff00]->Fill(stripNb,mean);
       mPedestalRMS[hybridID&0xfff00]->Fill(stripNb,rms);      
     }
@@ -427,6 +419,7 @@ int InputHandler::SummPedestal()
 
   f->Write();
   f->Close();
+  of.close();
   //end of Calculating pedestal
 
   //delete histograms

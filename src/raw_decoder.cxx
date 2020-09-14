@@ -48,7 +48,6 @@ RawDecoder::RawDecoder(const vector<uint32_t> &buffer, int start, int end)
       cout<<"empty vector passed in..."<<endl;
       return;
     }
-  Decode();
 };
 
 //==========================================================================
@@ -77,116 +76,132 @@ RawDecoder::~RawDecoder()
 }
 
 //==========================================================================
-void RawDecoder::Decode()
+map<int, vector<int> > RawDecoder::Decode()
 {
-  unsigned int word32bit;
-
-  int mpdid;
-  int adc_ch;
-  int hybridID;
-
-  //map<int, vector<int> > mpd_event;
-  vector<int> apv_event;
-  vector<int> apv_margin;
-  vector<int> mpd_margin;
-
-  mpd_margin.clear();
-  apv_margin.clear();
-  
-  //find MPD margin, find apv margin
-
-#define BLOCK_HEADER    0x0	// {3'h0, MODULE_ID, EVENT_PER_BLOCK, BLOCK_CNT[7:0]}
-#define BLOCK_TRAILER   0x1	// {3'h1, 1'b0, BlockWordCounter}
-#define EVENT_HEADER    0x2	// {3'h2, 1'b0, EventCounterFifo_Data}
-#define TRIGGER_TIME   0x3	// {3'h3, 1'b0, TimeCounterFifo_Data[39:20]}
-  //#define TRIGGER_TIME2   0x3	// {3'h3, 1'b1, TimeCounterFifo_Data[19:0]}
-#define APV_CH_DATA     0x4	// {3'h4, ChannelData[20:0]}
-#define EVENT_TRAILER   0x5	// {3'h5, 1'b0, LoopDataCounter[11:0], TRIGGER_TIME_FIFO}
-#define DATA_NOT_VALID  0x6	// {3'h6, 21'b0}
-#define FILLER_WORD     0x7	// {3'h7, 21'b0}
-
-
-
-
-
-
-
-
-  //find apv margin
-    for(int i=3;i<fBuf;i++)//skipping ssp data
-  {
-    uint32_t data = buf[i];
-    uint32_t header;
-    uint32_t apv_header;
-    header = (data & 0x00e00000)>>21; 
-    switch(header)
-      {
-      case BLOCK_HEADER:
-	cout<<"#####################################New Block#####################################"<<" mpdID: "<<((data&0x001F0000) >> 16)<<endl;
-	mpdid=(data&0x001F0000) >> 16;
-	break;
-      case EVENT_HEADER:
-	cout<<"     ################################New Event################################     "<<endl;
-	break;
-      case TRIGGER_TIME:
-	cout<<"     ################################TrigrTime################################     "<<endl;
-	break;
-      case APV_CH_DATA:
-	//cout<<"     ################################ApvChData################################     "<<endl;
+  // cout<<"gethit"<<endl;
+  map<int, vector<int> > mmHit;
+  uint32_t data;
+  int mpdid,apvid,stripNo;
+  int wordCount, wordIndex;
+  int adc[6];
+  for(int i=3;i<fBuf;i++)//skipping ssp data
+    {
+      data = buf[i];
+      if( (data>>30) == 0x2 ){ // if data defining word
+	mpdid = data & 0x1f;
+	cout<<"mpdID: "<<mpdid<<endl;
 	
-	switch((data& 0x00180000)>>19)
-	  {
-	  case 0: //apv header  -------  {1'b0, 1'b0, 1'b0, MEAN[11], DATA_IN[12:0], CH_ID[3:0]};
-	    cout<<"         ############################Apv Header###########################         "<<"APVID: "<<dec<<(data&0xf)<<endl;
-	    adc_ch=(data&0xf);
-	    hybridID=(mpdid<<12)|(adc_ch<<8);
-	    //mAPVRawSingleEvent[hybridID].push_back((data & 0x0001FFF0) >> 4);
-	    break;
-	  case 1: //data  -------  {1'b0, 1'b1, THRESHOLD_ADDRESS[6:0], data_minus_baseline[11:0]};
-	    // cout<<"         ############################Apv Header###########################         "<<endl;
-	   
-	    mAPVRawSingleEvent[hybridID].push_back(data & 0x00000fff);
-	    //  cout<<" "<<((data & 0x0007F000) >> 12);//<<(data & 0x00000fff)<<" ";
-
-	    break;
-	  case 2: //apv trailer  -------  {1'b1, 1'b0, 2'b0, MODULE_ID[4:0], DATA_IN[11:0]};
-	                                  //DATA_IN[11:0] = {ApvSampleCounterMinusOne[3:0], frame_counter[7:0]};
-	    cout<<"         ############################ApvTrailer###########################         "<<endl;
-	    cout<<dec<<"                        moduleID:"<<((data&0x1f000)>>12)<<"  SampleNb: "<<((data&0xf00)>>8)<<"  FrameNb: "<<(data&0xff)<<endl;
-	    mAPVRawSingleEvent[hybridID].push_back((data&0xf00)>>8);
-	    break;
-	  case 3: //Trailer  -------  {1'b1, 1'b1, MEAN[10:0], word_count[7:0]};
-	    cout<<"         ############################TT TRAILER###########################         "<<endl;
-	    break;
-	  default:
-	    break;
-	  }
-
-
-	break;
-      case EVENT_TRAILER:
-	cout<<"    ################################End Event################################     "<<endl;
-	break;
-      case BLOCK_TRAILER:
-	cout<<"#####################################End Block#####################################"<<endl;
-	break;
-      case DATA_NOT_VALID:
-	break;
-      case FILLER_WORD:
-	break;
-      default:
+	wordCount = 0;
+	continue;
+      }else if(data>>24 == 0xf8){ // if filler word
 	break;
       }
+      
+      wordIndex = wordCount%3;
+      wordCount++;
+      switch(wordIndex)
+	{
+	case 0:
+	  stripNo = data>>26;
+	  adc[0]  = data       & 0x1fff;
+	  if(adc[0] >= 0x1000) adc[0] = (adc[0] & 0xfff) - 0x1000;
+	  adc[1]  = (data>>13) & 0x1fff;
+	  if(adc[1] >= 0x1000) adc[1] = (adc[1] & 0xfff) - 0x1000;
+	  break;
+	case 1:
+	  stripNo |= ((data>>26) & 0x3) << 5; 
+	  adc[2]  = data       & 0x1fff;
+	  if(adc[2] >= 0x1000) adc[2] = (adc[2] & 0xfff) - 0x1000;
+	  adc[3]  = (data>>13) & 0x1fff;
+	  if(adc[3] >= 0x1000) adc[3] = (adc[3] & 0xfff) - 0x1000;
+	  break;
+	case 2:
+	  apvid = data>>26;
+	  adc[4]  = data       & 0x1fff;
+	  if(adc[4] >= 0x1000) adc[4] = (adc[4] & 0xfff) - 0x1000;
+	  adc[5]  = (data>>13) & 0x1fff;
+	  if(adc[5] >= 0x1000) adc[5] = (adc[5] & 0xfff) - 0x1000;
+	  break;
+	}
+	
+      if(wordIndex==2){
+	int hybridID = (mpdid<<12) | (apvid<<8) | stripNo;
+	for(int i=0; i<6 ;i++)
+	  { 
+	    cout<<"adc_"<<i<<" : "<<adc[i]<<endl;
+	    if(adc[i]>5000)
+	      getchar();
+	    mmHit[hybridID].push_back( adc[i] );
+	  }
+      }
+    }
+  return mmHit;
+}
 
-  }
-
-   
-
-
-
-
-  //    	mAPVRawSingleEvent[hybridID] = apv_event;
-
+map<int, vector<int> > RawDecoder::GetHits(map<int,vector<int> > mMapping)
+{
+  // cout<<"gethit"<<endl;
+  map<int, vector<int> > mmHit;
+  uint32_t data;
+  int mpdid,apvid,stripNo;
+  int wordCount, wordIndex;
+  int adc[6];
+  for(int i=3;i<fBuf;i++)//skipping ssp data
+    {
+      data = buf[i];
+      if( (data>>30) == 0x2 ){ // if data defining word
+	mpdid = data & 0x1f;
+	wordCount = 0;
+	continue;
+      }else if(data>>24 == 0xf8){ // if filler word
+	break;
+      }
+      
+      wordIndex = wordCount%3;
+      wordCount++;
+      switch(wordIndex)
+	{
+	case 0:
+	  stripNo = data>>26;
+	  adc[0]  = data       & 0x1fff;
+	  if(adc[0] >= 0x1000) adc[0] = (adc[0] & 0xfff) - 0x1000;
+	  adc[1]  = (data>>13) & 0x1fff;
+	  if(adc[1] >= 0x1000) adc[1] = (adc[1] & 0xfff) - 0x1000;
+	  break;
+	case 1:
+	  stripNo |= ((data>>26) & 0x3) << 5; 
+	  adc[2]  = data       & 0x1fff;
+	  if(adc[2] >= 0x1000) adc[2] = (adc[2] & 0xfff) - 0x1000;
+	  adc[3]  = (data>>13) & 0x1fff;
+	  if(adc[3] >= 0x1000) adc[3] = (adc[3] & 0xfff) - 0x1000;
+	  break;
+	case 2:
+	  apvid = data>>26;
+	  adc[4]  = data       & 0x1fff;
+	  if(adc[4] >= 0x1000) adc[4] = (adc[4] & 0xfff) - 0x1000;
+	  adc[5]  = (data>>13) & 0x1fff;
+	  if(adc[5] >= 0x1000) adc[5] = (adc[5] & 0xfff) - 0x1000;
+	  break;
+	}
+	
+      if(wordIndex==2){
+	//	cout<<mpdid<<" "<<apvid<<" "<<stripNo<<endl;
+	int hybridID = (mpdid<<12) | (apvid<<8) ;
+	int RstripPos;	  
+	int RstripNb = ChNb[stripNo];
+	RstripNb=RstripNb+(127-2*RstripNb)*mMapping[hybridID][3];       //re-matching for inverted strips Nb
+	RstripPos=RstripNb+128*mMapping[hybridID][2];                   // calculate position
+	int detID = mMapping[hybridID][0];
+	int planeID = mMapping[hybridID][1];
+	int HitHybridID = (detID<<13) | (planeID<<12) | RstripPos;
+	for(int i=0; i<6 ;i++)
+	  { 
+	    mmHit[HitHybridID].push_back( adc[i]   );//if stop here, reduce 200ms/10k event
+	  }
+      }
+    }
+  // cout<<"endof Gethit"<<endl;
+  return mmHit;
 }
 
 
@@ -198,172 +213,93 @@ map<int, vector<int> > RawDecoder::GetDecoded()
   return mAPVRawSingleEvent;
 }
 
-//===========================================================================
-map<int, TH1F* > RawDecoder::DrawRawHisto()
+
+
+void RawDecoder::DrawHits(map<int,vector<int> > mMapping, TCanvas *c)
 {
-  int mpd_id=0;
-  int adc_ch=0;
-  int hybridID=0;
 
-
-  map<int, vector<int> >::iterator it;
-  for(it = mAPVRawSingleEvent.begin(); it!=mAPVRawSingleEvent.end(); ++it)
+  map<int,TH1F*> hitHisto;
+  for(int i=0;i<10;i++)
     {
-      hybridID=it->first;
-      mpd_id = GetMPD_ID(hybridID);     
-      adc_ch = GetADC_ch(hybridID);
-      vector<int> adc_temp = it->second;
-      
-      int N = adc_temp.size();//cout<<"adc_tempsize:"<<N<<endl;
-      //cout<<"mpdid: "<<mpd_id<<"  adcCh: "<<adc_ch<<endl;
-      TH1F* h = new TH1F(Form("mpd_%d_ch_%d",mpd_id, adc_ch), Form("mpd_%d_ch_%d_raw_data",mpd_id, adc_ch), 780, 0, 779);
-      for(int i=0;i<N;i++)
-	{
-	  h->Fill(i+1, (Float_t) adc_temp[i]);
-	}
-      mAPVRawHisto[hybridID] = h;
+      //    hitHisto[i]->Delete();
+      hitHisto[i]= new TH1F(Form("GEM_%d__plane_%d",i/2,i%2),Form("GEM_%d__plane_%d",i/2,i%2),1600,0,1600);
     }
-  printf("pretending to be drawing histo\n");
-  getchar();
-  return mAPVRawHisto;
-}
-
-map<int, vector<int> > RawDecoder::GetStripTsAdcMap()
-{
-  int mpd_id=0;
-  int adc_ch=0;
-  int hybridID=0;
-
-
-  map<int, vector<int> >::iterator it;
-  for(it = mAPVRawSingleEvent.begin(); it!=mAPVRawSingleEvent.end(); ++it)
-  {
-    hybridID=it->first;mpd_id= GetMPD_ID(hybridID);
-    adc_ch = GetADC_ch(hybridID);
-    vector<int> adc_temp = it->second;
-    //cout<<adc_temp.size()<<endl;//774
-    int TSsize=adc_temp.size()/129;
-    //cout<<TSsize<<endl;//774
-    for(int i=0; i<TSsize;i++)
-      {
-	vector<int> singleTSadc_temp;
-	singleTSadc_temp.insert(singleTSadc_temp.end(),&adc_temp[129*i],&adc_temp[129*(i+1)]);
-	//cout<<"singleTSADCSIZE: "<<singleTSadc_temp.size()<<"     ";
-	vector<int> singleTSadc_temp_sorting; 
-	//	for(int j=0; j<128;j++)
-	//	  {
-	//	if(mpd_id==8&&adc_ch==0){cout<<dec<<"i:"<<i<<"singleTSadc_temp:"<<singleTSadc_temp[j]<<endl;}
-	//	  }
-	singleTSadc_temp_sorting.insert(singleTSadc_temp_sorting.end(),singleTSadc_temp.begin(),singleTSadc_temp.end());
-	sort(singleTSadc_temp_sorting.begin(),singleTSadc_temp_sorting.end()-1);
-	int iCommonMode=0;
-	for ( int k=28; k <100; k++) //omitting largest 4 channels for common mode, necessary to calculate this from the middle
-	  {
-	    iCommonMode+=singleTSadc_temp_sorting[k];
-	    //if((i==0|i==1)&&adc_ch==0)cout <<i<<"  "<<iCommonMode << " ";//if(k==singleTSadc_temp.size()-1){cout<<endl;}
-	  }
-	iCommonMode = iCommonMode/72; //cout<<"i "<<i<<"commonmode: "<<iCommonMode<<endl;
-	for ( int k=0; k <singleTSadc_temp.size()-1; k++) 
-	  {
-	    singleTSadc_temp[k]-=iCommonMode;
-	    //cout<<"commonmode: "<<singleTSadc_temp[k]<<endl;
-	  }
-	int temphybridID;
-	for(int j=0; j<128;j++)
-	  {
-	    
-	    //cout<<"hybridid:"<<hex<<hybridID;
-	    temphybridID=hybridID|j;     //if(adc_ch==0){cout<<hex<<"temphybridid:"<<temphybridID<<endl;}
-	    mPedestalTsAdc[temphybridID].push_back(singleTSadc_temp[j]);//singleTSadc_temp[j];
-	    //cout <<singleTSadc_temp[j]<<endl;
-	    //   if(mpd_id==8&&adc_ch==0){cout<<dec<<"i:"<<i<<"singleTSadc_temp:"<<singleTSadc_temp[j]<<endl;}
-	    //if((i==0|i==1)&&adc_ch==0)cout <<i<<" XXX  "<<singleTSadc_temp[j] << " ";
-	  }
+   
+  uint32_t data;
+  int mpdid,apvid,stripNo;
+  int wordCount, wordIndex;
+  int adc[6];
+  for(int i=3;i<fBuf;i++)//skipping ssp data
+    {
+      data = buf[i];
+      if( (data>>30) == 0x2 ){ // if data defining word
+	
+	mpdid = data & 0x1f;
+	cout<<mpdid<<endl;
+	wordCount = 0;
+	continue;
+      }else if(data>>24 == 0xf8){ // if filler word
+	break;
       }
-  }// 
-  return mPedestalTsAdc;
-}
-
-map<int, vector<int> > RawDecoder::ZeroSup(map<int,vector<int> > mMapping, map<int,vector<int> > mPedestalMean, map<int,vector<int> > mPedestalRMS)
-{
-
-  map<int, vector<int> > mmHit;
-
-  int mpd_id=0;
-  int adc_ch=0;
-  int hybridID=0;
-
-  map<int, vector<int> >::iterator it;
-  for(it = mAPVRawSingleEvent.begin(); it!=mAPVRawSingleEvent.end(); ++it)
-  {
-    hybridID = it->first;
-    mpd_id = GetMPD_ID(hybridID);     
-    adc_ch = GetADC_ch(hybridID);
-    
-    vector<int> adc_temp = it->second;
-    //cout<<adc_temp.size()<<endl;//774
-    int TSsize=adc_temp.size()/129;
-    //cout<<TSsize<<endl;//774
-    int CommonMode[TSsize];
-
-    for(int i=0; i<TSsize;i++)
-      { 
-	CommonMode[i]=0;
-	vector<int> singleTSadc_temp_sorting;
-	singleTSadc_temp_sorting.insert(singleTSadc_temp_sorting.end(),&adc_temp[129*i],&adc_temp[129*(i+1)]);
-	  	 
-	//cout<<(singleTSadc_temp_sorting.size()-5)<<endl;
-	sort(singleTSadc_temp_sorting.begin(),singleTSadc_temp_sorting.end()-1);
-
-	for ( int k=28; k <100; k++) //omitting largest 4 channels for common mode, necessary to calculate this from the middle
-	  {  
-	    CommonMode[i]+=singleTSadc_temp_sorting[k];
-	    //CommonMode[i]+=500;
-
-	  }
-
-	CommonMode[i] = CommonMode[i]/72; 
-	//	cout<<"Commonmode: "<<CommonMode[i];
-      }
- 
-    for(int j=0; j<128;j++)
-      {
-	int adcSum_temp=0;
-	for(int i=0;i<TSsize;i++)
-	  {//cout<<"ADC:"<<adc_temp[j+129*i]<<"    ";
-	    adcSum_temp = adcSum_temp+adc_temp[j+129*i]-CommonMode[i]-mPedestalMean[hybridID][j];
-	    //cout<<"ADC:"<<adcSum_temp<<"    ";
-	  }
-	// cout<<endl<<endl;
-	adcSum_temp = adcSum_temp/TSsize; 
-	 
-	//cout<<j<<"Mean  "<<mPedestalMean[mpd_id][adc_ch][j]<<"  "<<mPedestalRMS[mpd_id][adc_ch][j]<<endl;
-
-	if(adcSum_temp>5*mPedestalRMS[hybridID][j])
+      
+      wordIndex = wordCount%3;
+      wordCount++;
+      switch(wordIndex)
+	{
+	case 0:
+	  stripNo = data>>26;
+	  adc[0]  = data       & 0x1fff;
+	  if(adc[0] >= 0x1000) adc[0] = (adc[0] & 0xfff) - 0x1000;
+	  adc[1]  = (data>>13) & 0x1fff;
+	  if(adc[1] >= 0x1000) adc[1] = (adc[1] & 0xfff) - 0x1000;
+	  break;
+	case 1:
+	  stripNo |= ((data>>26) & 0x3) << 5; 
+	  adc[2]  = data       & 0x1fff;
+	  if(adc[2] >= 0x1000) adc[2] = (adc[2] & 0xfff) - 0x1000;
+	  adc[3]  = (data>>13) & 0x1fff;
+	  if(adc[3] >= 0x1000) adc[3] = (adc[3] & 0xfff) - 0x1000;
+	  break;
+	case 2:
+	  apvid = data>>26;
+	  adc[4]  = data       & 0x1fff;
+	  if(adc[4] >= 0x1000) adc[4] = (adc[4] & 0xfff) - 0x1000;
+	  adc[5]  = (data>>13) & 0x1fff;
+	  if(adc[5] >= 0x1000) adc[5] = (adc[5] & 0xfff) - 0x1000;
+	  break;
+	}
+	
+      if(wordIndex==2){
+	//	cout<<mpdid<<" "<<apvid<<" "<<stripNo<<endl;
+	int hybridID = (mpdid<<12) | (apvid<<8) ;
+	int RstripPos;	  
+	int RstripNb = ChNb[stripNo];
+	RstripNb=RstripNb+(127-2*RstripNb)*mMapping[hybridID][3];       //re-matching for inverted strips Nb
+	RstripPos=RstripNb+128*mMapping[hybridID][2];                   // calculate position
+	int detID = mMapping[hybridID][0];
+	int planeID = mMapping[hybridID][1];
+	int HitHybridID = (detID<<13) | (planeID<<12) | RstripPos;
+	int sum = 0;
+	for(int i=0; i<6 ;i++)
 	  { 
-	    //  j++;//originally used as simple method to remove cross talk, seems wrong now. Jan 09 2017
-	    int RstripPos=j;	  
-	    int RstripNb = ChNb[j];
-	    //int RstripNb=32*(j%4)+8*(int)(j/4)-31*(int)(j/16);                        //channel re-matching for apv25 chip
-	    ////stripNb=(8*(int)(stripNb/4)+3-stripNb)*((int)(stripNb/4)%2)+stripNb*(1-((int)(stripNb/4)%2));
-	    //RstripNb=RstripNb+1+RstripNb%4-5*(((int)(RstripNb/4))%2);                 //channel re-matching for INFN type APV front-end card
-	    //cout<<RstripNb<<", ";
-	    RstripNb=RstripNb+(127-2*RstripNb)*mMapping[hybridID][3];                   //re-matching for inverted strips Nb
-	    RstripPos=RstripNb+128*mMapping[hybridID][2];                               // calculate position
+	    sum += adc[i];
+	  }
 
-	    int detID = mMapping[hybridID][0];
-	    int planeID = mMapping[hybridID][1];
-	    int HitHybridID = (detID<<13)|(planeID<<12)|RstripPos;
-	    for(int i=0; i<TSsize;i++)
-	      { 
-		mmHit[HitHybridID].push_back(adc_temp[j+129*i]-CommonMode[i]-mPedestalMean[hybridID][j]);//if stop here, reduce 200ms/10k event
-		//	cout<<(adc_temp[j+129*i]-CommonMode[i]-mPedestalMean[hybridID][j])<<"  ";
-	      }     
-	    //	    cout<<endl;
-	    j++;
-	  } 
+	hitHisto[detID*2+planeID]->Fill(RstripPos,sum/6);
+      }
+    }
+  
+  for(int i=0;i<2;i++)
+    {
+      c->cd(i+1);
+      hitHisto[i]->Draw();
+    }
+  c->Update();
+  getchar();
+    for(int i=0;i<10;i++)
+    {
+      hitHisto[i]->Delete();
+    }
 
-      }  
-  }// 
-  return mmHit;
+  return;
 }

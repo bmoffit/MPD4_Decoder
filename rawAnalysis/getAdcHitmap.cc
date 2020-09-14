@@ -42,7 +42,7 @@ void getAdcHitmap()
 
 
     //gStyle->SetOptFit(1);
-    TFile *f = new TFile("/home/danning/hallavme12Decoder/Result/run316_50kEvtTest.root");
+    TFile *f = new TFile("../Result/test.root");
     TTree *t = (TTree*)f->Get("GEMHit");
 
     for(int i=0;i<6;i++)
@@ -56,6 +56,7 @@ void getAdcHitmap()
     t->SetBranchAddress("strip", &strip_id);
 
     int N = t->GetEntries();
+    //N=60000;
     cout<<"total entries: "<<N<<endl;
 
     for(int i=0;i<N;i++)
@@ -68,7 +69,11 @@ void getAdcHitmap()
 	    float aadc = 0.;
 	    for(int ii = 0;ii<6;ii++)
 	    {
-		aadc+=(float)adc[ii][j];
+	      if(aadc<adc[ii][j])
+		{
+		  aadc=adc[ii][j];
+		}
+		//	aadc+=(float)adc[ii][j];
 	    }
 	    h_adc[2*det_id[j]+plane_id[j]] -> Fill(aadc);
 	    if(plane_id[j]==0)h_hitx[det_id[j]] -> Fill(strip_id[j]);

@@ -175,6 +175,7 @@ map<int, int> CaloMap;
 	    {
 		aadc+=(float)adc[ii][j];
 	    }
+	    if(aadc<301) continue;
 	    h_adc[2*det_id[j]+plane_id[j]] -> Fill(aadc);
 	    if(plane_id[j]==0)h_hitx[det_id[j]] -> Fill(strip_id[j]);
 	    if(plane_id[j]==1)h_hity[det_id[j]] -> Fill(strip_id[j]);

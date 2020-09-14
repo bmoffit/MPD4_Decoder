@@ -19,7 +19,7 @@ void getAdcHitmap()
   TCanvas *c_hit = new TCanvas("c_hit","hitmap",20,20,1000,800);
   c_hit->Divide(2,5);
 
-  TFile *f = new TFile("../test.root");
+  TFile *f = new TFile("../Result/test.root");
   TTree *t = (TTree*)f->Get("GEMHit");
 
 

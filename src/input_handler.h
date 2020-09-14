@@ -74,6 +74,7 @@ class InputHandler
   int InitPedestalToWrite();
   //load for root file mode
   int LoadPedestalToRead();
+  int InitCommHisto();
   int InitRootFile();
 
   //##################Event Processing+++++++++++++++++//
@@ -81,10 +82,13 @@ class InputHandler
   int ProcessSingleSspEvent(const vector<uint32_t> &block_vec, int istart);
   int CalSinglePedestal(const map<int, vector<int> > &mTsAdc);
   int FillRootTree(const map<int, vector<int> > &mmHit);
+  int FillCommHisto(const map<int, vector<int> > &comm);
+  int ConvertPedestalToTXT();
 
   //##################Event Summarizing+++++++++++++++++//
   int SummPedestal();  
   int SummRootFile();  
+  int SummComm();
   
  public:
   
@@ -105,7 +109,7 @@ private:
   //----------------------------------------------
   map<int, TH1F*> mAPVRawHistos;//mpd+adc
   map<int, vector<int> > mAPVRawTSs;//mpd+adc
-
+  map<int, TH1F* > mComm;
 
   map<int, vector<int> > mTsAdc;//adc for each strip after common mode subtraction//mpd+adc+strip
 
@@ -127,7 +131,8 @@ private:
 
 
   TFile *f;
-
+  TCanvas *cRaw;
+  TCanvas *cHit;
 
   RawDecoder *fRawDecoder;
 };

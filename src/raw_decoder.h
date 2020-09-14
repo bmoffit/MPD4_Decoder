@@ -55,13 +55,15 @@ private:
 
 
 public:
-  void Decode();
-  map<int, vector<int> > GetStripTsAdcMap();
-  map<int, vector<int> > ZeroSup(map<int,vector<int> > mMapping, map<int,vector<int> > mPedestalMean, map<int,vector<int> > mPedestalRMS);
+  map<int, vector<int> > Decode();
+  map<int, vector<int> > GetHits(map<int,vector<int> > mMapping);
+
+
   map<int, vector<int> > GetDecoded();
-  //map<int, map<int, map<int, vector<int> > > > mPedestalTsAdc;
-  //map<int, map<int, TH1F* > > GetAPVRawHisto();
-  map<int, TH1F* > DrawRawHisto();
+
+  map<int, TH1F* > DrawRawHisto(TCanvas *c);
+  void DrawHits(map<int,vector<int> > mMapping, TCanvas *c);
+
   map<int, vector<int> > mPedestalTsAdc;
 };
 
